@@ -4,16 +4,9 @@ board=riscv64_virt
 cpus=1
 # image_path=${root_path}/out/${board}/packages/phone/images
 image_path=${root_path}/images
-ip link show dev br0 >/dev/null 2>&1 || {
-    sudo modprobe tun tap &&
-    sudo ip link add br0 type bridge &&
-    sudo ip address add 192.168.137.1/24 dev br0 &&
-    sudo ip link set dev br0 up
-}
 sudo qemu-system-riscv64 \
     -name PolyOS-1 \
-    -machine virt \
-    -dtb ./qemu-virt-new.dtb \
+    -machine virt,dumpdtb=qemu-virt.dtb \
     -m 8G \
     -smp ${cpus} \
     -no-reboot \
@@ -44,7 +37,3 @@ sudo qemu-system-riscv64 \
     -device virtio-keyboard-pci \
     -k en-us \
     -bios ./opensbi/build/platform/generic/firmware/fw_dynamic.elf
-    # -display sdl,gl=off
-
-
-# exit

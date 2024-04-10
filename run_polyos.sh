@@ -14,7 +14,7 @@ sudo qemu-system-riscv64 \
     -name PolyOS-1 \
     -machine virt \
     -dtb ./qemu-virt-new.dtb \
-    -m 8G \
+    -m 9G \
     -smp ${cpus} \
     -no-reboot \
     -netdev bridge,id=net0,br=br0 \

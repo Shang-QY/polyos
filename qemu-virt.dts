@@ -17,8 +17,8 @@
 
 			tmem: tmem {
 				compatible = "opensbi,domain,memregion";
-				base = <0x0 0xF0C00000>;
-				order = <22>;   // 4M
+				base = <0x2 0x80000000>;
+				order = <30>;   // 1G
 			};
 
 			allmem: allmem {

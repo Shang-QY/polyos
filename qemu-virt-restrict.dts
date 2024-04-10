@@ -11,6 +11,43 @@
 		linux,initrd-start = <0x88200000>;
 		bootargs = "loglevel=1 ip=192.168.137.3:192.168.137.1:192.168.137.1:255.255.255.0::eth0:off sn=0023456789 console=tty0,115200 console=ttyS0,115200 init=/bin/init ohos.boot.hardware=virt root=/dev/ram0 rw ohos.required_mount.system=/dev/block/vdb@/usr@ext4@ro,barrier=1@wait,required ohos.required_mount.vendor=/dev/block/vdc@/vendor@ext4@ro,barrier=1@wait,required ohos.required_mount.sys_prod=/dev/block/vde@/sys_prod@ext4@ro,barrier=1@wait,required ohos.required_mount.chip_prod=/dev/block/vdf@/chip_prod@ext4@ro,barrier=1@wait,required ohos.required_mount.data=/dev/block/vdd@/data@ext4@nosuid,nodev,noatime,barrier=1,data=ordered,noauto_da_alloc@wait,reservedsize=1073741824 ohos.required_mount.misc=/dev/block/vda@/misc@none@none=@wait,required";
 		stdout-path = "/soc/uart@10000000";
+	
+		opensbi-domains {
+			compatible = "opensbi,domain,config";
+
+			tmem: tmem {
+				compatible = "opensbi,domain,memregion";
+				base = <0x2 0x80000000>;
+				order = <30>;   // 1G
+			};
+
+			allmem: allmem {
+				compatible = "opensbi,domain,memregion";
+				base = <0x0 0x0>;
+				order = <64>;
+			};
+
+			tdomain: trusted-domain {
+				compatible = "opensbi,domain,instance";
+				regions = <&allmem 0x3f>;
+				possible-harts = <&cpu0>;
+				next-arg1 = <0x0 0x81F80000>;
+				next-addr = <0x0 0xF0C00000>;
+				next-mode = <0x1>;
+			};
+
+			udomain: untrusted-domain {
+				compatible = "opensbi,domain,instance";
+				regions = <&tmem 0x0>, <&allmem 0x3f>;
+				possible-harts = <&cpu0>;
+				boot-hart = <&cpu0>;
+				next-arg1 = <0x0 0xffe00000>;
+				next-addr = <0x0 0x80200000>;
+				next-mode = <0x1>;
+				system-reset-allowed;
+                system-suspend-allowed;
+			};
+		};
 	};
 
 	memory@80000000 {
@@ -23,12 +60,13 @@
 		#size-cells = <0x00>;
 		timebase-frequency = <0x989680>;
 
-		cpu@0 {
+		cpu0: cpu@0 {
 			phandle = <0x01>;
 			device_type = "cpu";
 			reg = <0x00>;
 			status = "okay";
 			compatible = "riscv";
+			opensbi-domain = <&udomain>;
 			riscv,isa = "rv64imafdcsu";
 			mmu-type = "riscv,sv48";
 

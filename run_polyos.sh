@@ -10,6 +10,20 @@ ip link show dev br0 >/dev/null 2>&1 || {
     sudo ip address add 192.168.137.1/24 dev br0 &&
     sudo ip link set dev br0 up
 }
+# ../andes_optee/qemu/build/qemu-system-riscv64 \
+#     -name PolyOS-1 \
+#     -M virt,aia=aplic-imsic \
+#     -dtb ./qemu-virt-new_copied.dtb \
+#     -m 4G,slots=2,maxmem=8G \
+#     -object memory-backend-ram,size=2G,id=m0 -object memory-backend-ram,size=2G,id=m1 \
+#     -numa node,nodeid=0,memdev=m0 -numa node,nodeid=1,memdev=m1 -smp 2,sockets=2,maxcpus=2 \
+#     -bios ./fw_dynamic_copied.elf \
+#     -kernel ${image_path}/Image \
+#     -device loader,file=tee-pager_v2.bin,addr=0xF0C00000 \
+#     -nographic \
+#     -device virtio-net-pci,netdev=usernet -netdev user,id=usernet,hostfwd=tcp::9990-:22
+
+
 sudo qemu-system-riscv64 \
     -name PolyOS-1 \
     -machine virt \
@@ -42,9 +56,12 @@ sudo qemu-system-riscv64 \
     -monitor telnet:127.0.0.1:55556,server,nowait \
     -device virtio-mouse-pci \
     -device virtio-keyboard-pci \
+    -device loader,file=tee-pager_v2.bin,addr=0xF0C00000 \
     -k en-us \
-    -bios ./opensbi/build/platform/generic/firmware/fw_dynamic.elf
+    -bios ./opensbi/build/platform/generic/firmware/fw_dynamic.elf \
+    # -S -s
     # -display sdl,gl=off
 
-
+#     -device loader,file=./test_context_switch/linux_test/build/s_hello.bin,addr=0xF0C00000 \
+#     -device loader,file=tee-pager_v2.bin,addr=0xF0C00000 \
 # exit

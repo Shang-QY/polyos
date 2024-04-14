@@ -41,7 +41,7 @@
 				regions = <&allmem 0x3f>;
 				possible-harts = <&cpu0>;
 				boot-hart = <&cpu0>;
-				next-arg1 = <0x0 0xffe00000>;
+				next-arg1 = <0x0 0xbfe00000>;
 				next-addr = <0x0 0x80200000>;
 				next-mode = <0x1>;
 				system-reset-allowed;

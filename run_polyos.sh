@@ -1,9 +1,7 @@
 #!/bin/bash
-root_path=$(pwd)
 board=riscv64_virt
 cpus=1
-# image_path=${root_path}/out/${board}/packages/phone/images
-image_path=${root_path}/images
+image_path=${WORKDIR}/out/${board}/packages/phone/images
 ip link show dev br0 >/dev/null 2>&1 || {
     sudo modprobe tun tap &&
     sudo ip link add br0 type bridge &&
@@ -33,7 +31,7 @@ sudo qemu-system-riscv64 \
     -drive if=none,file=${image_path}/chip_prod.img,format=raw,id=chip-prod,index=0 \
     -device virtio-blk-device,drive=chip-prod \
     -append "loglevel=7 ip=192.168.137.3:192.168.137.1:192.168.137.1:255.255.255.0::eth0:off sn=0023456789 console=tty0,115200 console=ttyS0,115200 init=/bin/init ohos.boot.hardware=virt root=/dev/ram0 rw ohos.required_mount.system=/dev/block/vdb@/usr@ext4@ro,barrier=1@wait,required ohos.required_mount.vendor=/dev/block/vdc@/vendor@ext4@ro,barrier=1@wait,required ohos.required_mount.sys_prod=/dev/block/vde@/sys_prod@ext4@ro,barrier=1@wait,required ohos.required_mount.chip_prod=/dev/block/vdf@/chip_prod@ext4@ro,barrier=1@wait,required ohos.required_mount.data=/dev/block/vdd@/data@ext4@nosuid,nodev,noatime,barrier=1,data=ordered,noauto_da_alloc@wait,reservedsize=1073741824 ohos.required_mount.misc=/dev/block/vda@/misc@none@none=@wait,required" \
-    -kernel ${image_path}/Image_new \
+    -kernel ${image_path}/Image \
     -initrd ${image_path}/ramdisk.img \
     -nographic \
     -vga none \
@@ -45,7 +43,7 @@ sudo qemu-system-riscv64 \
     -device virtio-keyboard-pci \
     -device loader,file=tee-pager_v2.bin,addr=0xF0C00000 \
     -k en-us \
-    -bios ./opensbi/build/platform/generic/firmware/fw_dynamic.elf \
+    -bios ./fw_dynamic.elf \
     # -S -s
     # -display sdl,gl=off
 

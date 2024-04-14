@@ -1,0 +1,554 @@
+diff --git a/arch/riscv/include/asm/sbi.h b/arch/riscv/include/asm/sbi.h
+index c0fdb05ff..90b90105f 100644
+--- a/arch/riscv/include/asm/sbi.h
++++ b/arch/riscv/include/asm/sbi.h
+@@ -27,6 +27,7 @@ enum sbi_ext_id {
+ 	SBI_EXT_IPI = 0x735049,
+ 	SBI_EXT_RFENCE = 0x52464E43,
+ 	SBI_EXT_HSM = 0x48534D,
++	SBI_EXT_RPXY = 0x52505859,
+ };
+ 
+ enum sbi_ext_base_fid {
+@@ -70,6 +71,14 @@ enum sbi_hsm_hart_status {
+ 	SBI_HSM_HART_STATUS_STOP_PENDING,
+ };
+ 
++enum sbi_ext_rpxy_fid {
++	SBI_EXT_RPXY_PROBE = 0,
++	SBI_EXT_RPXY_SETUP_SHMEM,
++	SBI_EXT_RPXY_SEND_NORMAL_MSG,
++	SBI_EXT_RPXY_SEND_POSTED_MSG,
++	SBI_EXT_RPXY_GET_NOTIFICATIONS,
++};
++
+ #define SBI_SPEC_VERSION_DEFAULT	0x1
+ #define SBI_SPEC_VERSION_MAJOR_SHIFT	24
+ #define SBI_SPEC_VERSION_MAJOR_MASK	0x7f
+@@ -145,6 +154,14 @@ static inline unsigned long sbi_minor_version(void)
+ 	return sbi_spec_version & SBI_SPEC_VERSION_MINOR_MASK;
+ }
+ 
++/* Make SBI version */
++static inline unsigned long sbi_mk_version(unsigned long major,
++					    unsigned long minor)
++{
++	return ((major & SBI_SPEC_VERSION_MAJOR_MASK) <<
++		SBI_SPEC_VERSION_MAJOR_SHIFT) | minor;
++}
++
+ int sbi_err_map_linux_errno(int err);
+ #else /* CONFIG_RISCV_SBI */
+ /* stubs for code that is only reachable under IS_ENABLED(CONFIG_RISCV_SBI): */
+@@ -153,5 +170,17 @@ void sbi_clear_ipi(void);
+ void sbi_send_ipi(const unsigned long *hart_mask);
+ void sbi_remote_fence_i(const unsigned long *hart_mask);
+ void sbi_init(void);
++
++int sbi_rpxy_srvgrp_probe(u32 protocolid, u32 transportid, u32 srvgrpid, unsigned long *val);
++
++int sbi_rpxy_send_normal_message(u32 protocolid, u32 transportid, u32 srvgrpid, u8 srvid,
++				 void *tx, unsigned long tx_msglen,
++				 void *rx, unsigned long *rx_msglen);
++
++int sbi_rpxy_send_posted_message(u32 protocolid, u32 transportid, u32 srvgrpid, u8 srvid,
++				 void *tx, unsigned long tx_msglen);
++
++int sbi_rpxy_get_notifications(u32 protocolid, u32 transportid, u32 srvgrpid,
++			       void *rx, unsigned long *rx_msglen);
+ #endif /* CONFIG_RISCV_SBI */
+ #endif /* _ASM_RISCV_SBI_H */
+diff --git a/arch/riscv/kernel/Makefile b/arch/riscv/kernel/Makefile
+index 62de075fc..fcfc83c56 100644
+--- a/arch/riscv/kernel/Makefile
++++ b/arch/riscv/kernel/Makefile
+@@ -57,5 +57,6 @@ obj-$(CONFIG_KGDB)		+= kgdb.o
+ obj-$(CONFIG_JUMP_LABEL)	+= jump_label.o
+ 
+ obj-$(CONFIG_EFI)		+= efi.o
++obj-y				+= rpxy-sbi.o
+ 
+ clean:
+diff --git a/arch/riscv/kernel/rpxy-sbi.c b/arch/riscv/kernel/rpxy-sbi.c
+new file mode 100644
+index 000000000..abf416f92
+--- /dev/null
++++ b/arch/riscv/kernel/rpxy-sbi.c
+@@ -0,0 +1,222 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * RISC-V RPMI Proxy (RPXY) Helper functions
++ *
++ * Copyright (C) 2023 Ventana Micro Systems Inc.
++ */
++
++#define pr_fmt(fmt) "riscv-rpxy: " fmt
++
++#include <asm/sbi.h>
++#include <linux/percpu.h>
++#include <linux/mm.h>
++#include <linux/cpu.h>
++#include <linux/smp.h>
++
++struct sbi_rpxy {
++	void *shmem;
++	phys_addr_t shmem_phys;
++	bool active;
++};
++
++DEFINE_PER_CPU(struct sbi_rpxy, sbi_rpxy);
++
++DEFINE_STATIC_KEY_FALSE(sbi_rpxy_available);
++#define sbi_rpxy_available() \
++	static_branch_unlikely(&sbi_rpxy_available)
++
++int sbi_rpxy_srvgrp_probe(u32 protocolid, u32 transportid, u32 srvgrpid, unsigned long *val)
++{
++	struct sbiret sret;
++	struct sbi_rpxy *rpxy;
++
++    pr_info("[Qingyu] %s: Enter, line %d\n", __func__, __LINE__);
++
++	if (!sbi_rpxy_available())
++		return -ENODEV;
++
++	rpxy = this_cpu_ptr(&sbi_rpxy);
++
++	get_cpu();
++	sret = sbi_ecall(SBI_EXT_RPXY, SBI_EXT_RPXY_PROBE,
++		  protocolid, transportid, srvgrpid, 0, 0, 0);
++	if (val)
++		*val = sret.value;
++	put_cpu();
++
++    pr_info("[Qingyu] %s: End, line %d\n", __func__, __LINE__);
++
++	return sbi_err_map_linux_errno(sret.error);
++}
++EXPORT_SYMBOL(sbi_rpxy_srvgrp_probe);
++
++int sbi_rpxy_send_normal_message(u32 protocolid, u32 transportid, u32 srvgrpid, u8 srvid,
++				 void *tx, unsigned long tx_msglen,
++				 void *rx, unsigned long *rx_msglen)
++{
++	struct sbiret sret;
++	struct sbi_rpxy *rpxy = this_cpu_ptr(&sbi_rpxy);
++
++    pr_info("[Qingyu] %s: Enter, line %d\n", __func__, __LINE__);
++
++	if (!sbi_rpxy_available() || !rpxy->active)
++		return -ENODEV;
++
++	get_cpu();
++	if (tx_msglen)
++		memcpy(rpxy->shmem, tx, tx_msglen);
++
++	/* Shared memory is copied with message data at 0x0 offset */
++	sret = sbi_ecall(SBI_EXT_RPXY, SBI_EXT_RPXY_SEND_NORMAL_MSG,
++			 protocolid, transportid, srvgrpid, srvid, tx_msglen, 0);
++
++	if (!sret.error && rx) {
++		memcpy(rx, rpxy->shmem, sret.value);
++		if (rx_msglen)
++			*rx_msglen = sret.value;
++	}
++	put_cpu();
++
++    pr_info("[Qingyu] %s: End, line %d\n", __func__, __LINE__);
++
++	return sbi_err_map_linux_errno(sret.error);
++}
++EXPORT_SYMBOL(sbi_rpxy_send_normal_message);
++
++int sbi_rpxy_send_posted_message(u32 protocolid, u32 transportid, u32 srvgrpid,
++				 u8 srvid, void *tx, unsigned long tx_msglen)
++{
++	struct sbiret sret;
++	struct sbi_rpxy *rpxy = this_cpu_ptr(&sbi_rpxy);
++
++    pr_info("[Qingyu] %s: Enter, line %d\n", __func__, __LINE__);
++
++	if (!sbi_rpxy_available() || !rpxy->active)
++		return -ENODEV;
++
++	get_cpu();
++	if (tx_msglen)
++		memcpy(rpxy->shmem, tx, tx_msglen);
++
++	/* Shared memory is copied with message data at 0x0 offset */
++	sret = sbi_ecall(SBI_EXT_RPXY, SBI_EXT_RPXY_SEND_POSTED_MSG,
++			 protocolid, transportid, srvgrpid, srvid, tx_msglen, 0);
++	put_cpu();
++
++    pr_info("[Qingyu] %s: End, line %d\n", __func__, __LINE__);
++
++	return sbi_err_map_linux_errno(sret.error);
++}
++EXPORT_SYMBOL(sbi_rpxy_send_posted_message);
++
++int sbi_rpxy_get_notifications(u32 protocolid, u32 transportid, u32 srvgrpid,
++			       void *rx, unsigned long *rx_msglen)
++{
++	struct sbiret sret;
++	struct sbi_rpxy *rpxy = this_cpu_ptr(&sbi_rpxy);
++
++    pr_info("[Qingyu] %s: Enter, line %d\n", __func__, __LINE__);
++
++	if (!sbi_rpxy_available() || !rpxy->active)
++		return -ENODEV;
++
++	get_cpu();
++	sret = sbi_ecall(SBI_EXT_RPXY, SBI_EXT_RPXY_GET_NOTIFICATIONS,
++			protocolid, transportid, srvgrpid, 0, 0, 0);
++
++	if (!sret.error && rx) {
++		memcpy(rx, rpxy->shmem, sret.value);
++		if (rx_msglen)
++			*rx_msglen = sret.value;
++	}
++	put_cpu();
++
++    pr_info("[Qingyu] %s: End, line %d\n", __func__, __LINE__);
++
++	return sbi_err_map_linux_errno(sret.error);
++}
++EXPORT_SYMBOL(sbi_rpxy_get_notifications);
++
++static int sbi_rpxy_exit(unsigned int cpu)
++{
++	struct sbi_rpxy *rpxy;
++
++	if (!sbi_rpxy_available())
++		return -ENODEV;
++
++	rpxy = per_cpu_ptr(&sbi_rpxy, cpu);
++
++	if (!rpxy->shmem)
++		return -ENOMEM;
++
++	free_pages((unsigned long)rpxy->shmem, get_order(PAGE_SIZE));
++	rpxy->shmem = NULL;
++	rpxy->shmem_phys = 0;
++	rpxy->active = false;
++
++	return 0;
++}
++
++static int sbi_rpxy_setup_shmem(unsigned int cpu)
++{
++	struct sbiret sret;
++	struct page *shmem_page;
++	struct sbi_rpxy *rpxy;
++
++    pr_info("[Qingyu] %s: Enter, line %d\n", __func__, __LINE__);
++
++	if (!sbi_rpxy_available())
++		return -ENODEV;
++
++	rpxy = per_cpu_ptr(&sbi_rpxy, cpu);
++	if (rpxy->active)
++		return -EINVAL;
++
++	shmem_page = alloc_pages(GFP_KERNEL | __GFP_ZERO,
++				 get_order(PAGE_SIZE));
++	if (!shmem_page) {
++		sbi_rpxy_exit(cpu);
++		pr_err("Shared memory setup failed for cpu-%d\n", cpu);
++		return -ENOMEM;
++	}
++
++	rpxy->shmem = page_to_virt(shmem_page);
++	rpxy->shmem_phys = page_to_phys(shmem_page);
++
++	sret = sbi_ecall(SBI_EXT_RPXY, SBI_EXT_RPXY_SETUP_SHMEM,
++			PAGE_SIZE, rpxy->shmem_phys, 0, 0, 0, 0);
++	if (sret.error) {
++		sbi_rpxy_exit(cpu);
++		return sbi_err_map_linux_errno(sret.error);
++	}
++
++	rpxy->active = true;
++
++    pr_info("[Qingyu] %s: End, line %d\n", __func__, __LINE__);
++
++	return 0;
++}
++
++static int __init sbi_rpxy_init(void)
++{
++	if ((sbi_spec_version < sbi_mk_version(1, 0)) ||
++		sbi_probe_extension(SBI_EXT_RPXY) <= 0) {
++		return -ENODEV;
++	}
++
++	static_branch_enable(&sbi_rpxy_available);
++	pr_info("SBI RPXY extension detected\n");
++
++	/*
++	 * Setup CPUHP notifier to setup shared
++	 * memory on all CPUs
++	 */
++	cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
++			  "riscv/rpxy-sbi:cpu-shmem-init",
++			  sbi_rpxy_setup_shmem,
++			  sbi_rpxy_exit);
++
++	return 0;
++}
++
++arch_initcall(sbi_rpxy_init);
+diff --git a/drivers/tee/Kconfig b/drivers/tee/Kconfig
+index e99d840c2..43d3079ea 100644
+--- a/drivers/tee/Kconfig
++++ b/drivers/tee/Kconfig
+@@ -2,7 +2,7 @@
+ # Generic Trusted Execution Environment Configuration
+ config TEE
+ 	tristate "Trusted Execution Environment support"
+-	depends on HAVE_ARM_SMCCC || COMPILE_TEST || CPU_SUP_AMD
++	depends on HAVE_ARM_SMCCC || COMPILE_TEST || CPU_SUP_AMD || RISCV_SBI
+ 	select CRYPTO
+ 	select CRYPTO_SHA1
+ 	select DMA_SHARED_BUFFER
+diff --git a/drivers/tee/optee/Kconfig b/drivers/tee/optee/Kconfig
+index 3ca71e381..682787b35 100644
+--- a/drivers/tee/optee/Kconfig
++++ b/drivers/tee/optee/Kconfig
+@@ -2,7 +2,7 @@
+ # OP-TEE Trusted Execution Environment Configuration
+ config OPTEE
+ 	tristate "OP-TEE"
+-	depends on HAVE_ARM_SMCCC
++	depends on HAVE_ARM_SMCCC || RISCV_SBI
+ 	depends on MMU
+ 	help
+ 	  This implements the OP-TEE Trusted Execution Environment (TEE)
+diff --git a/drivers/tee/optee/call.c b/drivers/tee/optee/call.c
+index f8f1594be..01ee07a0a 100644
+--- a/drivers/tee/optee/call.c
++++ b/drivers/tee/optee/call.c
+@@ -529,7 +529,7 @@ void optee_fill_pages_list(u64 *dst, struct page **pages, int num_pages,
+ 
+ 		if (n == PAGELIST_ENTRIES_PER_PAGE) {
+ 			pages_data->next_page_data =
+-				virt_to_phys(pages_data + 1);
++				__virt_to_phys(pages_data + 1);
+ 			pages_data++;
+ 			n = 0;
+ 		}
+@@ -572,6 +572,8 @@ static bool is_normal_memory(pgprot_t p)
+ 		((pgprot_val(p) & L_PTE_MT_MASK) == L_PTE_MT_WRITEBACK));
+ #elif defined(CONFIG_ARM64)
+ 	return (pgprot_val(p) & PTE_ATTRINDX_MASK) == PTE_ATTRINDX(MT_NORMAL);
++#elif defined(CONFIG_RISCV)
++	return true;
+ #else
+ #error "Unuspported architecture"
+ #endif
+@@ -647,7 +649,7 @@ int optee_shm_register(struct tee_context *ctx, struct tee_shm *shm,
+ 	 * In the least bits of msg_arg->params->u.tmem.buf_ptr we
+ 	 * store buffer offset from 4k page, as described in OP-TEE ABI.
+ 	 */
+-	msg_arg->params->u.tmem.buf_ptr = virt_to_phys(pages_list) |
++	msg_arg->params->u.tmem.buf_ptr = __virt_to_phys(pages_list) |
+ 	  (tee_shm_get_page_offset(shm) & (OPTEE_MSG_NONCONTIG_PAGE_SIZE - 1));
+ 
+ 	if (optee_do_call_with_arg(ctx, msg_parg) ||
+diff --git a/drivers/tee/optee/core.c b/drivers/tee/optee/core.c
+index f255a96ae..74f90710e 100644
+--- a/drivers/tee/optee/core.c
++++ b/drivers/tee/optee/core.c
+@@ -22,6 +22,7 @@
+ #include "optee_private.h"
+ #include "optee_smc.h"
+ #include "shm_pool.h"
++#include <asm/sbi.h>
+ 
+ #define DRIVER_NAME "optee"
+ 
+@@ -535,6 +536,49 @@ optee_config_shm_memremap(optee_invoke_fn *invoke_fn, void **memremaped_shm)
+ 	return rc;
+ }
+ 
++/** SPD RPXY Protocal ID */
++enum sbi_rpxy_protocol_spd {
++	SBI_RPXY_PROT_SPD_TEE = 1,
++};
++
++/** SPD TEE ServiceGroups IDs */
++enum spd_servicegroup_id {
++	SPD_SRVGRP_ID_MIN = 0,
++	SPD_SRVGRP_BASE = 0x00001,
++	SPD_SRVGRP_ID_MAX_COUNT,
++};
++
++/** SPD TEE Base ServiceGroup Service IDs */
++enum spd_base_service_id {
++	SPD_BASE_SRV_COMMUNICATE = 0x01,
++	SPD_BASE_SRV_COMPLETE = 0x02,
++};
++
++struct sbi_rpxy_ctx {
++	u32 tpid;
++	u32 max_msg_len;
++};
++
++struct rpmi_tee_tx {
++	unsigned long a0;
++	unsigned long a1;
++	unsigned long a2;
++	unsigned long a3;
++	unsigned long a4;
++	unsigned long a5;
++	unsigned long a6;
++	unsigned long a7;
++};
++
++struct rpmi_tee_rx {
++	unsigned long value;
++	unsigned long extp1;
++	unsigned long extp2;
++	unsigned long extp3;
++};
++
++static struct sbi_rpxy_ctx rpxy_ctx;
++
+ /* Simple wrapper functions to be able to use a function pointer */
+ static void optee_smccc_smc(unsigned long a0, unsigned long a1,
+ 			    unsigned long a2, unsigned long a3,
+@@ -542,7 +586,35 @@ static void optee_smccc_smc(unsigned long a0, unsigned long a1,
+ 			    unsigned long a6, unsigned long a7,
+ 			    struct arm_smccc_res *res)
+ {
++#ifndef CONFIG_RISCV
+ 	arm_smccc_smc(a0, a1, a2, a3, a4, a5, a6, a7, res);
++#else
++	struct rpmi_tee_tx tx;
++	struct rpmi_tee_rx rx;
++	unsigned long rxmsg_len;
++	int ret;
++
++	tx.a0 = a0;
++	tx.a1 = a1;
++	tx.a2 = a2;
++	tx.a3 = a3;
++	tx.a4 = a4;
++	tx.a5 = a5;
++	tx.a6 = a6;
++	tx.a6 = a0;
++	tx.a7 = a7;
++	ret = sbi_rpxy_send_normal_message(SBI_RPXY_PROT_SPD_TEE, rpxy_ctx.tpid,
++					   SPD_SRVGRP_BASE,
++					   SPD_BASE_SRV_COMMUNICATE,
++					   &tx, sizeof(struct rpmi_tee_tx), &rx, &rxmsg_len);
++	if (ret)
++		pr_warn("optee_smccc_smc - riscv archtecture call result %d\n", ret);
++
++	res->a0 = rx.value;
++	res->a1 = rx.extp1;
++	res->a2 = rx.extp2;
++	res->a3 = rx.extp3;
++#endif
+ }
+ 
+ static void optee_smccc_hvc(unsigned long a0, unsigned long a1,
+@@ -551,14 +623,16 @@ static void optee_smccc_hvc(unsigned long a0, unsigned long a1,
+ 			    unsigned long a6, unsigned long a7,
+ 			    struct arm_smccc_res *res)
+ {
++#ifndef CONFIG_RISCV
+ 	arm_smccc_hvc(a0, a1, a2, a3, a4, a5, a6, a7, res);
++#endif
+ }
+ 
+ static optee_invoke_fn *get_invoke_func(struct device *dev)
+ {
+ 	const char *method;
+ 
+-	pr_info("probing for conduit method.\n");
++	pr_info("probing for conduit method. [Shang Qingyu]\n");
+ 
+ 	if (device_property_read_string(dev, "method", &method)) {
+ 		pr_warn("missing \"method\" property\n");
+@@ -626,6 +700,38 @@ static void optee_shutdown(struct platform_device *pdev)
+ 	optee_disable_shm_cache(platform_get_drvdata(pdev));
+ }
+ 
++static inline int optee_load_fw(struct platform_device *pdev,
++				optee_invoke_fn *invoke_fn)
++{
++	return 0;
++}
++
++static int sbi_rpxy_tee_probe(struct platform_device *pdev)
++{
++	u32 tpid;
++	long max_msg_len;
++	int ret, num_clocks, clkid;
++	struct clk_hw *hw_ptr;
++	struct clk_hw_onecell_data *clk_data;
++
++	if ((sbi_spec_version < sbi_mk_version(1, 0)) ||
++		sbi_probe_extension(SBI_EXT_RPXY) <= 0) {
++		dev_err(&pdev->dev, "sbi rpxy extension not present\n");
++		return -ENODEV;
++	}
++
++	ret = sbi_rpxy_srvgrp_probe(SBI_RPXY_PROT_SPD_TEE, 0, SPD_SRVGRP_BASE, &max_msg_len);
++	if (!max_msg_len) {
++		dev_err(&pdev->dev, "RPXY SPD TEE Service Group Probe Failed\n");
++		return -ENODEV;
++	}
++
++	rpxy_ctx.tpid = 0x0;
++	rpxy_ctx.max_msg_len = max_msg_len;
++
++	return ret;
++}
++
+ static int optee_probe(struct platform_device *pdev)
+ {
+ 	optee_invoke_fn *invoke_fn;
+@@ -636,6 +742,7 @@ static int optee_probe(struct platform_device *pdev)
+ 	u32 sec_caps;
+ 	int rc;
+ 
++#ifndef CONFIG_RISCV
+ 	/*
+ 	 * The kernel may have crashed at the same time that all available
+ 	 * secure world threads were suspended and we cannot reschedule the
+@@ -672,6 +779,21 @@ static int optee_probe(struct platform_device *pdev)
+ 	 */
+ 	if (sec_caps & OPTEE_SMC_SEC_CAP_DYNAMIC_SHM)
+ 		pool = optee_config_dyn_shm();
++#else
++	rc = sbi_rpxy_tee_probe(pdev);
++	if (rc)
++		return rc;
++
++	invoke_fn = get_invoke_func(&pdev->dev);
++	if (IS_ERR(invoke_fn))
++		return PTR_ERR(invoke_fn);
++
++	rc = optee_load_fw(pdev, invoke_fn);
++	if (rc)
++		return rc;
++
++	sec_caps |= OPTEE_SMC_SEC_CAP_HAVE_RESERVED_SHM;
++#endif
+ 
+ 	/*
+ 	 * If dynamic shared memory is not available or failed - try static one
+diff --git a/drivers/tee/optee/rpc.c b/drivers/tee/optee/rpc.c
+index 9dbdd783d..37f25f314 100644
+--- a/drivers/tee/optee/rpc.c
++++ b/drivers/tee/optee/rpc.c
+@@ -358,7 +358,7 @@ static void handle_rpc_func_cmd_shm_alloc(struct tee_context *ctx,
+ 		 * In the least bits of u.tmem.buf_ptr we store buffer offset
+ 		 * from 4k page, as described in OP-TEE ABI.
+ 		 */
+-		arg->params[0].u.tmem.buf_ptr = virt_to_phys(pages_list) |
++		arg->params[0].u.tmem.buf_ptr = __virt_to_phys(pages_list) |
+ 			(tee_shm_get_page_offset(shm) &
+ 			 (OPTEE_MSG_NONCONTIG_PAGE_SIZE - 1));
+ 		arg->params[0].u.tmem.size = tee_shm_get_size(shm);

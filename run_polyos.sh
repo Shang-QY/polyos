@@ -1,7 +1,7 @@
 #!/bin/bash
 board=riscv64_virt
 cpus=1
-image_path=${WORKDIR}/out/${board}/packages/phone/images
+image_path=${WORKDIR}/images
 ip link show dev br0 >/dev/null 2>&1 || {
     sudo modprobe tun tap &&
     sudo ip link add br0 type bridge &&
@@ -12,7 +12,7 @@ ip link show dev br0 >/dev/null 2>&1 || {
 sudo qemu-system-riscv64 \
     -name PolyOS-1 \
     -machine virt \
-    -dtb ./qemu-virt-new.dtb \
+    -dtb ${WORKDIR}/qemu-virt-new.dtb \
     -m 9G \
     -smp ${cpus} \
     -no-reboot \

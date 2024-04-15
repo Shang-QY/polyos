@@ -237,11 +237,11 @@ sudo mount images/system.img ./mnt
 
 sudo cp -rf test_polyos_with_optee/buildroot/root/lib/* mnt/system/lib64/
 
-sudo cp -rf ./optee_client/build/out/export/usr/sbin/tee-supplicant ./mnt/system/bin/
+sudo cp -rf test_polyos_with_optee/optee_client/build/out/export/usr/sbin/tee-supplicant ./mnt/system/bin/
 
 sudo mkdir -p ./mnt/system/lib/optee_armtz
-sudo cp ./optee_examples/hello_world/ta/8aaaf200-2450-11e4-abe2-0002a5d5c51b.ta ./mnt/system/lib/optee_armtz/
-sudo cp ./optee_examples/hello_world/host/optee_example_hello_world ./mnt/system/bin/
+sudo cp test_polyos_with_optee/optee_examples/hello_world/ta/8aaaf200-2450-11e4-abe2-0002a5d5c51b.ta ./mnt/system/lib/optee_armtz/
+sudo cp test_polyos_with_optee/optee_examples/hello_world/host/optee_example_hello_world ./mnt/system/bin/
 
 sudo umount ./mnt
 

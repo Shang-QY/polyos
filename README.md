@@ -16,7 +16,7 @@ Use repo to obtain the source code of PolyOS (RISC-V openHarmony)
 sudo apt install repo
 ```
 
-#### install docker
+#### Install docker
 https://docs.docker.com/engine/install/
 
 #### Intsll QEMU
@@ -28,7 +28,7 @@ QEMU emulator version 8.2.1
 Copyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers
 ```
 
-### 2. Obtain the source code of OpenHARMONY
+### 2. Obtain the source code of OpenHarmony
 ```
 mkdir polyos && cd polyos
 export WORKDIR=`pwd`

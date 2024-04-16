@@ -1,27 +1,25 @@
-# Run polyos with OPTEE
+# Run polyos with Penglai-Zone (OP-TEE)
 
-## 一、Pre-Requist: Compile and run polyos
+## 1、Pre-Requist: Compile and run polyos (RISC-V openHarmony)
 
-### 1. 准备环境
-包括 repo（用来拉代码）和 docker（跑容器编译）
+### 1. Prepare the environment
 
-#### 安装git-lfs工具
-openHarmony的很多代码是使用git-lfs来管理的:
+#### Install git-lfs
+openHarmony includes several lagre files, which are managed by the git-lfs:
 ```
 sudo apt install git-lfs
 ```
 
-#### 安装 repo 工具
-由于 PolyOS Mobile 源代码分散在多个仓库中，您还需要下载 repo 工具来轻松的获取 PolyOS Mobile 源代码。
+#### Install repo
+Use repo to obtain the source code of PolyOS (RISC-V openHarmony)
 ```
 sudo apt install repo
 ```
 
-#### 安装容器引擎
-可以使用 docker 和 podman 来启动容器，这里推荐使用兼容性更好的 docker
+#### install docker
 https://docs.docker.com/engine/install/
 
-#### 安装qemu
+#### Intsll QEMU
 ```
 sudo apt install qemu-system qemu
 qemu-system-riscv64 --version # 确保qemu的版本比较新
@@ -30,23 +28,22 @@ QEMU emulator version 8.2.1
 Copyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers
 ```
 
-### 2. 获取源代码
+### 2. Obtain the source code of OpenHARMONY
 ```
 mkdir polyos && cd polyos
 export WORKDIR=`pwd`
 
-git config --global credential.helper 'cache --timeout=3600' # ！！！这个很重要
+git config --global credential.helper 'cache --timeout=3600' 
 
 repo init -u https://isrc.iscas.ac.cn/gitlab/riscv/polyosmobile/ohos_qemu/manifest.git -b OpenHarmony-3.2-Release --no-repo-verify
 
 repo sync -j$(nproc) -c && repo forall -c 'git lfs pull'
 ```
 
-### 3. Linux 下的编译构建
+### 3. Compile the openHarmony in the Linux 
 https://polyos.iscas.ac.cn/docs/developer-guides/build-polyos-mobile/on-ubuntu
 
-#### 启动容器并在容器环境中编译
-启动编译的容器，并将下载下来的源代码文件夹映射到容器中：
+#### Using the docker environment 
 ```
 cd $WORKDIR
 docker run -it --rm -v $(pwd):/polyos-mobile --workdir /polyos-mobile swr.cn-south-1.myhuaweicloud.com/openharmony-docker/openharmony-docker:1.0.0
@@ -55,11 +52,11 @@ bash build/prebuilts_download.sh # 获取编译依赖的一些预构建二进制
 
 bash build.sh --product-name qemu_riscv64_virt_linux_system --ccache # 启动编译
 ```
-这个过程会需要大量时间，时间的长短取决于您的硬件性能。在您编译完成后，镜像保存在 PolyOS Mobile 源代码目录下的 out/riscv64_virt/packages/phone/images 目录中。
+It needs several time (about 3~4 hours, depends on you machine). After the compilation, the target image is under the directory: out/riscv64_virt/packages/phone/images
 
-### 4. 命令行中运行
+### 4. Run the openHarmony in the qemu
 
-退出容器，在工作目录创建并运行以下脚本：
+Run the following scripts：
 ```
 #!/bin/bash 
 board=riscv64_virt 
@@ -113,13 +110,13 @@ lock/vda@/misc@none@none=@wait,required" \
 exit
 ```
 
-## 二、Download this project
+## 2、Download Penglai-Zone project
 ```
 cd $WORKDIR
 git clone https://github.com/Shang-QY/test_polyos_with_optee.git
 ```
 
-## 三、Prepare OPTEE and PenglaiZone opensbi
+## 3、Prepare OPTEE and PenglaiZone opensbi
 
 Download and install toolchain
 ```
@@ -187,7 +184,7 @@ make \
 cd -
 ```
 
-Compile Rootfs
+Compile Rootfs (can be ignored, if you use the provided image)
 ```
 cd $WORKDIR/test_polyos_with_optee
 git clone https://github.com/buildroot/buildroot.git -b 2023.08.x
@@ -198,14 +195,14 @@ mkdir -p root
 tar vxf output/images/rootfs.tar -C ./root
 ```
 
-## 四、Prepare Device Tree Blob
+## 4、Prepare Device Tree Blob
 
 ```
 cd $WORKDIR
 dtc -I dts -O dtb -o qemu-virt-new.dtb test_polyos_with_optee/qemu-virt-restrict.dts
 ```
 
-## 五、Patch and recompile polyos linux kernel
+## 5、Patch and recompile polyos linux kernel (can be ignored, if you use the provided image)
 
 编辑 defconfig: $WORKDIR/device/board/qemu/riscv64_virt/kernel/riscv64_virt.config，在其中添加：
 ```
@@ -226,15 +223,16 @@ docker run -it --rm -v $(pwd):/polyos-mobile --workdir /polyos-mobile swr.cn-sou
 ./build.sh --product-name qemu_riscv64_virt_linux_system --build-target build_kernel --gn-args linux_kernel_version=\"linux-5.10\" # in docker
 ```
 
-## 六、Copy CA/TA to polyos filesystem
+## 6、Copy CA/TA to polyos filesystem
 ```
 cd $WORKDIR
 
-# 拷贝 optee executable & lib
+# Copy optee executable & lib
 
 mkdir -p mnt
 sudo mount images/system.img ./mnt
 
+# Can be ignored, if you use the provide image
 sudo cp -rf test_polyos_with_optee/buildroot/root/lib/* mnt/system/lib64/
 
 sudo cp -rf test_polyos_with_optee/optee_client/build/out/export/usr/sbin/tee-supplicant ./mnt/system/bin/
@@ -246,7 +244,8 @@ sudo cp test_polyos_with_optee/optee_examples/hello_world/host/optee_example_hel
 sudo umount ./mnt
 
 
-# 拷贝 tee_supplicant 启动脚本
+# Copy the script to enable the tee-supplicant:
+
 sudo mount -o loop images/userdata.img ./mnt
 
 cat > mnt/start_optee_supplicant.sh << EOF
@@ -261,12 +260,13 @@ else
 fi
 ;;
 EOF
+
 sudo chmod a+x mnt/start_optee_supplicant.sh
 
 sudo umount ./mnt
 ```
 
-## 七、Run polyos with optee
+## 7、Run polyos with optee
 
 ```
 cd $WORKDIR

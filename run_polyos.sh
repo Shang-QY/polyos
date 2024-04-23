@@ -1,6 +1,6 @@
 #!/bin/bash
 board=riscv64_virt
-cpus=4
+cpus=1
 image_path=${WORKDIR}/images
 ip link show dev br0 >/dev/null 2>&1 || {
     sudo modprobe tun tap &&

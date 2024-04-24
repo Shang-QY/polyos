@@ -15,8 +15,7 @@ echo Preparing toolchain
 cd "$WORKDIR/test_polyos_with_optee"
 mkdir -p toolchain && cd toolchain/
 if [ ! -f "riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz" ]; then
-    wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2023.07.07/ \
-        riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz
+    wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2023.07.07/riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz
     tar zxvf riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz
 fi
 export TOOLCHAIN=$WORKDIR/test_polyos_with_optee/toolchain

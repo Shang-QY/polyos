@@ -14,7 +14,7 @@ fi
 echo Preparing toolchain
 cd "$WORKDIR/test_polyos_with_optee"
 mkdir -p toolchain && cd toolchain/
-if [ ! -f "riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz" ]; then
+if [ ! -f "riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz" -o ! -d "riscv" ]; then
     wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2023.07.07/riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz
     tar zxvf riscv64-glibc-ubuntu-20.04-gcc-nightly-2023.07.07-nightly.tar.gz
 fi
@@ -54,6 +54,15 @@ make && make install
 
 # Compile OPTEE Examples
 echo Compiling OPTEE Examples
+
+if [ ! -d "$WORKDIR/test_polyos_with_optee/optee_client/build/out/export/usr" ]; then
+    echo "ERROR: The directory TEEC_EXPORT: $WORKDIR/test_polyos_with_optee/optee_client/build/out/export/usr does not exist. Please check optee_client compilation."
+fi
+
+if [ ! -d "$WORKDIR/test_polyos_with_optee/optee_os/out/riscv-plat-virt/export-ta_rv64" ]; then
+    echo "ERROR: The directory TA_DEV_KIT_DIR: $WORKDIR/test_polyos_with_optee/optee_os/out/riscv-plat-virt/export-ta_rv64 does not exist. Please check optee_os compilation."
+fi
+
 cd "$WORKDIR/test_polyos_with_optee"
 if [ ! -d "optee_examples" ]; then
     git clone https://github.com/linaro-swg/optee_examples.git

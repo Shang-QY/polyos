@@ -44,12 +44,13 @@ fi
 cd optee_client
 if [ ! -d "build" ]; then
     mkdir -p build
-    cd build
-    cmake CFG_TEE_CLIENT_LOG_LEVEL=3 CFG_TEE_SUPP_LOG_LEVEL=3 \
-        -DCMAKE_C_COMPILER="$TOOLCHAIN/riscv/bin/riscv64-unknown-linux-gnu-gcc" \
-        -DCMAKE_INSTALL_PREFIX=./out/export/usr ..
-    make && make install
 fi
+cd build
+rm -rf *
+cmake CFG_TEE_CLIENT_LOG_LEVEL=3 CFG_TEE_SUPP_LOG_LEVEL=3 \
+    -DCMAKE_C_COMPILER="$TOOLCHAIN/riscv/bin/riscv64-unknown-linux-gnu-gcc" \
+    -DCMAKE_INSTALL_PREFIX=./out/export/usr ..
+make && make install
 
 # Compile OPTEE Examples
 echo Compiling OPTEE Examples

@@ -31,7 +31,6 @@
 				compatible = "opensbi,domain,instance";
 				regions = <&allmem 0x3f>;
 				possible-harts = <&cpu0>;
-				next-arg1 = <0x0 0x81F80000>;
 				next-addr = <0x0 0xF0C00000>;
 				next-mode = <0x1>;
 			};
@@ -41,7 +40,6 @@
 				regions = <&allmem 0x3f>;
 				possible-harts = <&cpu0>;
 				boot-hart = <&cpu0>;
-				next-arg1 = <0x0 0xbfe00000>;
 				next-addr = <0x0 0x80200000>;
 				next-mode = <0x1>;
 				system-reset-allowed;

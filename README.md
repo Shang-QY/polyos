@@ -22,7 +22,7 @@ https://docs.docker.com/engine/install/
 #### Intsll QEMU
 ```
 sudo apt install qemu-system qemu
-qemu-system-riscv64 --version # 确保qemu的版本比较新
+qemu-system-riscv64 --version # Make sure you use newer version
 
 QEMU emulator version 8.2.1
 Copyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers
@@ -48,9 +48,9 @@ https://polyos.iscas.ac.cn/docs/developer-guides/build-polyos-mobile/on-ubuntu
 cd $WORKDIR
 docker run -it --rm -v $(pwd):/polyos-mobile --workdir /polyos-mobile swr.cn-south-1.myhuaweicloud.com/openharmony-docker/openharmony-docker:1.0.0
 
-bash build/prebuilts_download.sh # 获取编译依赖的一些预构建二进制工具
+bash build/prebuilts_download.sh # Get pre-built tools
 
-bash build.sh --product-name qemu_riscv64_virt_linux_system --ccache # 启动编译
+bash build.sh --product-name qemu_riscv64_virt_linux_system --ccache # Start compilation
 ```
 It needs several time (about 3~4 hours, depends on you machine). After the compilation, the target image is under the directory: out/riscv64_virt/packages/phone/images
 

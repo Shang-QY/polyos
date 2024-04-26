@@ -1,8 +1,8 @@
 # Run polyos with Penglai-Zone (OP-TEE)
 
-## 1、Pre-Requist: Compile and run polyos (RISC-V openHarmony)
+## 1 Pre-Requist: Compile and run polyos (RISC-V openHarmony)
 
-### 1. Prepare the environment
+### 1.1 Prepare the environment
 
 #### Install git-lfs
 openHarmony includes several lagre files, which are managed by the git-lfs:
@@ -28,7 +28,7 @@ QEMU emulator version 8.2.1
 Copyright (c) 2003-2023 Fabrice Bellard and the QEMU Project developers
 ```
 
-### 2. Obtain the source code of OpenHarmony
+### 1.2. Obtain the source code of OpenHarmony
 ```
 mkdir polyos && cd polyos
 export WORKDIR=`pwd`
@@ -40,7 +40,7 @@ repo init -u https://isrc.iscas.ac.cn/gitlab/riscv/polyosmobile/ohos_qemu/manife
 repo sync -j$(nproc) -c && repo forall -c 'git lfs pull'
 ```
 
-### 3. Compile the openHarmony in the Linux 
+### 1.3. Compile the openHarmony in the Linux 
 https://polyos.iscas.ac.cn/docs/developer-guides/build-polyos-mobile/on-ubuntu
 
 #### Using the docker environment 
@@ -54,7 +54,7 @@ bash build.sh --product-name qemu_riscv64_virt_linux_system --ccache # 启动编
 ```
 It needs several time (about 3~4 hours, depends on you machine). After the compilation, the target image is under the directory: out/riscv64_virt/packages/phone/images
 
-### 4. Run the openHarmony in the qemu
+### 1.4. Run the openHarmony in the qemu
 
 Run the following scripts：
 ```
@@ -110,13 +110,13 @@ lock/vda@/misc@none@none=@wait,required" \
 exit
 ```
 
-## 2、Download Penglai-Zone project
+## 2 Download Penglai-Zone project
 ```
 cd $WORKDIR
 git clone https://github.com/Shang-QY/test_polyos_with_optee.git
 ```
 
-## 3、Prepare OPTEE and PenglaiZone opensbi
+## 3 Prepare OPTEE and PenglaiZone opensbi
 
 Download and install toolchain
 ```
@@ -195,23 +195,23 @@ mkdir -p root
 tar vxf output/images/rootfs.tar -C ./root
 ```
 
-## 4、Prepare Device Tree Blob
+## 4 Prepare Device Tree Blob
 
 ```
 cd $WORKDIR
 dtc -I dts -O dtb -o qemu-virt-new.dtb test_polyos_with_optee/qemu-virt-restrict.dts
 ```
 
-## 5、Patch and recompile polyos linux kernel (can be ignored, if you use the provided image)
+## 5 Patch and recompile polyos linux kernel (can be ignored, if you use the provided image)
 
-编辑 defconfig: $WORKDIR/device/board/qemu/riscv64_virt/kernel/riscv64_virt.config，在其中添加：
+Compile defconfig: $WORKDIR/device/board/qemu/riscv64_virt/kernel/riscv64_virt.config，insert below config：
 ```
 CONFIG_TEE=y
 CONFIG_OPTEE=y
 CONFIG_OPTEE_SHM_NUM_PRIV_PAGES=1
 ```
 
-源码打补丁并编译：
+Patch kernel source code(for optee driver) and compile it：
 ```
 cd $WORKDIR
 cd kernel/linux/linux-5.10
@@ -223,7 +223,7 @@ docker run -it --rm -v $(pwd):/polyos-mobile --workdir /polyos-mobile swr.cn-sou
 ./build.sh --product-name qemu_riscv64_virt_linux_system --build-target build_kernel --gn-args linux_kernel_version=\"linux-5.10\" # in docker
 ```
 
-## 6、Copy CA/TA to polyos filesystem
+## 6 Copy CA/TA to polyos filesystem
 ```
 cd $WORKDIR
 
@@ -266,7 +266,7 @@ sudo chmod a+x mnt/start_optee_supplicant.sh
 sudo umount ./mnt
 ```
 
-## 7、Run polyos with optee
+## 7 Run polyos with optee
 
 ```
 cd $WORKDIR
@@ -278,14 +278,4 @@ After Login, execute
 cd data
 ./start_optee_supplicant.sh
 optee_example_hello_world
-```
-
-
-# 附录（for qingyu only
-```
-sudo cp -rf ../enable_optee/optee_client/build/out/export/usr/sbin/tee-supplicant ./mnt/system/bin/
-
-sudo mkdir -p ./mnt/system/lib/optee_armtz
-sudo cp ../enable_optee/optee_examples/hello_world/ta/8aaaf200-2450-11e4-abe2-0002a5d5c51b.ta ./mnt/system/lib/optee_armtz/
-sudo cp ../enable_optee/optee_examples/hello_world/host/optee_example_hello_world ./mnt/system/bin/
 ```
